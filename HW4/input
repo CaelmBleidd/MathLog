@@ -1,0 +1,55 @@
+|- A -> A
+A & A -> A
+A -> A -> A
+A -> (A -> A) -> A
+A & A -> A
+(A -> A -> A) -> (A -> (A -> A) -> A) -> A -> A
+(A -> (A -> A) -> A) -> A -> A
+A & A -> A
+!!(A & A -> A) -> (A & A -> A)
+A -> A
+
+
+one_not_a -> ["!A"]
+two -> []
+two_a -> ["A"]
+two_b -> ["B"]
+two_a_b -> ["A", "B"]
+two_not_a -> ["!A"]
+two_not_b -> ["!B"]
+two_not_a_b -> ["!A", "!B"]
+three  -> []
+three_a -> ["A"]
+three_b -> ["B"]
+three_c -> ["C"]
+three_a_b -> ["A", "B"]
+three_a_c -> ["A", "C"]
+three_b_c -> ["B", "C"]
+three_a_b_c -> ["A", "B", "C"]
+three_not_a -> ["!A"]
+three_not_b -> ["!B"]
+three_not_c -> ["!C"]
+three_not_a_b -> ["!A", "!B"]
+three_not_a_c -> ["!A", "!C"]
+three_not_b_c -> ["!B", "!C"]
+three_not_a_b_c -> ["!A", "!B", "!C"]
+
+
+        modpon x a b =
+            replace_vars'
+                (Map.fromList [('a', a), ('b', b), ('x', x)])
+                [("((x)->(a))->((x)->(a)->(b))->((x)->(b))", Axiom), ("((x)->(a)->(b))->((x)->(b))", ModusPonens "(x)->(a)"), ("(x)->(b)", ModusPonens "(x)->(a)->(b)")]
+        axiom x a =
+            replace_vars'
+                (Map.fromList [('a',a),('x',x)])
+                [("a", Axiom),("(a)->(x)->(a)", Axiom),("(x)->(a)", ModusPonens "a")]
+        self_proof x =
+            replace_vars'
+                (Map.fromList [('a',x)])
+                [
+                    ("(a)->(a)->(a)", Axiom),
+                    ("((a)->(a)->(a))->((a)->((a)->(a))->(a))->((a)->(a))",Axiom),
+                    ("((a)->((a)->(a))->(a))->((a)->(a))",ModusPonens "(a)->(a)->(a)"),
+                    ("((a)->((a)->(a))->(a))", Axiom),
+                    ("(a)->(a)", ModusPonens "(a)->((a)->(a))->(a)")
+                ]

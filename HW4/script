@@ -1,0 +1,4 @@
+rm output.txt
+make clean
+make
+./parser
