@@ -11,38 +11,39 @@ import           System.IO
 import           Splitter
 
 data Statement = Statement {
-                   index         :: Int,
-                   expr          :: Expr,
-                   numberOfAxiom :: Maybe Int,
-                   numberOfHypos :: Maybe Int,
-                   numberOfMP    :: Maybe (Int, Int) }
-                 deriving (Eq, Ord)
+    index        :: Int,
+    expr         :: Expr,
+    indexOfAxiom :: Maybe Int,
+    indexOfHypo  :: Maybe Int,
+    mp           :: Maybe (Int, Int) }
+    deriving (Eq, Ord)
 
-isHypo :: Set.Set Expr -> Expr -> Bool
-isHypo hypos expr = Set.member expr hypos
+--isHypo :: Set.Set Expr -> Expr -> Bool
+--isHypo hypos expr = Set.member expr hypos
 
-isAxiom :: Expr -> Maybe Int
+getHypoNumber :: Statement -> Map Statement Int -> Int
+getHypoNumber statement hypos = lookup (expr statement) hypos
+
+isAxiom :: Expr -> Int
 isAxiom (Binary Impl a (Binary Impl b a'))
-  | a == a'                                    = Just 1
+  | a == a'                                    = True
 isAxiom (Binary Impl (Binary Impl a b) (Binary Impl (Binary Impl a' (Binary Impl b' c)) (Binary Impl a'' c')))
-  | a == a' && a' == a'' && b == b' && c == c' = Just 2
+  | a == a' && a' == a'' && b == b' && c == c' = True
 isAxiom (Binary Impl a (Binary Impl b (Binary And a' b')))
-  | a == a' && b' == b                         = Just 3
+  | a == a' && b' == b                         = True
 isAxiom (Binary Impl (Binary And a b) b')
-  | b == b'                                    = Just 4
+  | b == b'                                    = True
 isAxiom (Binary Impl (Binary And a b) a')
-  | a == a'                                    = Just 5
+  | a == a'                                    = True
 isAxiom (Binary Impl a (Binary Or a' b))
-  | a == a'                                    = Just 6
+  | a == a'                                    = True
 isAxiom (Binary Impl b (Binary Or a' b'))
-  | b == b'                                    = Just 7
+  | b == b'                                    = True
 isAxiom (Binary Impl (Binary Impl a c) (Binary Impl (Binary Impl b c') (Binary Impl (Binary Or a' b') c'')))
-  | a == a' && b == b' && c == c' && c' == c'' = Just 8
+  | a == a' && b == b' && c == c' && c' == c'' = True
 isAxiom (Binary Impl (Binary Impl a b) (Binary Impl (Binary Impl a' (Not b')) (Not a'')))
-  | a == a' && b == b' && a' == a''            = Just 9
-isAxiom Binrary Impl (Not (Not a)) a'
-  | a == a'                                    = Just 10
-isAxiom          _                             = Nothing
+  | a == a' && b == b' && a' == a''            = True
+isAxiom _                             = False
 
 isAxiomTen :: Expr -> Bool
 isAxiomTen (Binary Impl (Not (Not a)) a')
@@ -58,13 +59,6 @@ getExpr :: String -> Expr
 getExpr s = case parseExpr (alexScanTokens s) of
   Left  err  -> error "ERROR"
   Right expr -> expr
-
-replaceOnA :: (Expr, [Char]) -> [Char]
-replaceOnA (expr, line) = concat $ map (\c -> if c == 'A' then show expr ; else [c]) line
-
-replaceOnAAndB :: Expr ->  Expr -> [Char] -> [Char]
-replaceOnAAndB a b line = concat $ map (\c -> if c == 'A' then show a; else if c == 'B' then show b; else [c]) line
-
 
 
 isImpl :: Expr -> Bool
@@ -87,41 +81,46 @@ wasn'tInProofAbove proof expr = case splitImplToPair expr of
                     Nothing -> True
   Nothing     -> True
 
+--printForAll :: Set.Set Expr -> [Expr] -> Expr -> [Char]
+--printForAll set list expr = if isAxiom expr
+--                          then printAxiom expr
+--                          else if isHypo set expr
+--                                   then printHypo expr
+--                                   else if isAxiomTen expr
+--                                        then printAxiomTen expr
+--                                        else case getMP list expr of
+--                                          Just (a, b) -> printMP (a, b)
+--                                          Nothing     -> ""
 
-annotateAll :: [Expr] -> [String]
-annotateAll exprs = map annotateExpr exprs
-
-annotateExpr :: Expr -> String
-
-
-
+checkAndRemoveDuplicates :: [Statement]
 
 annotate :: String -> String -> IO ()
 annotate inputFile outputFile = do
 
-  writeFile outputFile ""
-  file <- readFile inputFile
 
-  --------file            <- getContents
+  --------writeFile outputFile ""
+  --------file <- readFile inputFile
+
+  file            <- getContents
   linesOfOldProof <- return $ lines file
 
-  -- :t firstLine :: String -> String
   firstLine       <- return $ Splitter.splitOn ("|-") $ head linesOfOldProof
-  newFirstLine    <- return $ show (getExpr (head firstLine)) ++ " |- " ++ show (getExpr (last firstLine)) ++ "\n"
+  newFirstLine    <- return $ head firstLine ++ "|- !!" ++ show (getExpr (last firstLine)) ++ "\n"
+  toProof         <- return $ last firstLine
   firstLine       <- return $ if head firstLine == [] then [""] else firstLine
 
-  -- I know the reflections from Exprs to their numbers3
   hypos           <- return $ Splitter.splitOn "," $ head firstLine
   hypos           <- return $ if hypos == [""] then [] else map getExpr hypos
-  hypos           <- return $ Map.fromList $ zip hypos [1..]
+  let setHypos     = Set.fromList hypos
+  hypos           <- return $ Map.fromList (zip hypos ([1..]::[Int]))
 
-  -- :t linesOfOldProof :: [Expr]
   linesOfOldProof <- return $ drop 1 linesOfOldProof
   linesOfOldProof <- return $ map getExpr linesOfOldProof
 
-  --let partPrintForAll = printForAll setHypos linesOfOldProof
 
-  appendFile outputFile (newFirstLine)
-  --appendFile outputFile (Data.List.intercalate "\n" (map partPrintForAll linesOfOldProof))
-  -------putStr newFirstLine
-  -------putStr $ Data.List.intercalate "\n" (map partPrintForAll linesOfOldProof)
+--  let partPrintForAll = printForAll setHypos linesOfOldProof
+
+  --------appendFile outputFile (newFirstLine)
+  --------appendFile outputFile (Data.List.intercalate "\n" (map partPrintForAll linesOfOldProof))
+--  putStr newFirstLine
+--  putStr $ Data.List.intercalate "\n" (map partPrintForAll linesOfOldProof)
