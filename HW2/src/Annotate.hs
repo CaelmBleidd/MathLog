@@ -40,15 +40,20 @@ isAxiom (Binary Impl (Binary Impl a c) (Binary Impl (Binary Impl b c') (Binary I
   | a == a' && b == b' && c == c' && c' == c'' = Just 8
 isAxiom (Binary Impl (Binary Impl a b) (Binary Impl (Binary Impl a' (Not b')) (Not a'')))
   | a == a' && b == b' && a' == a''            = Just 9
-isAxiom Binrary Impl (Not (Not a)) a'
+isAxiom (Binary Impl (Not (Not a)) a')
   | a == a'                                    = Just 10
 isAxiom          _                             = Nothing
 
-isAxiomTen :: Expr -> Bool
-isAxiomTen (Binary Impl (Not (Not a)) a')
-  | a == a'                                    = True
-isAxiomTen _                                   = False
+toStatement :: (Int, Expr) -> Statement
+toStatement (i, exprFromSource) = Statement {
+                                             index = i,
+                                             expr = exprFromSource,
+                                             numberOfAxiom = Nothing,
+                                             numberOfHypos = Nothing,
+                                             numberOfMP = Nothing }
 
+linesToStatements :: [Expr] -> [Statement]
+linesToStatements exprs = map toStatement (zip [1..] exprs)
 
 splitImplToPair :: Expr -> Maybe (Expr, Expr)
 splitImplToPair (Binary Impl a b) = Just (a, b)
@@ -58,14 +63,6 @@ getExpr :: String -> Expr
 getExpr s = case parseExpr (alexScanTokens s) of
   Left  err  -> error "ERROR"
   Right expr -> expr
-
-replaceOnA :: (Expr, [Char]) -> [Char]
-replaceOnA (expr, line) = concat $ map (\c -> if c == 'A' then show expr ; else [c]) line
-
-replaceOnAAndB :: Expr ->  Expr -> [Char] -> [Char]
-replaceOnAAndB a b line = concat $ map (\c -> if c == 'A' then show a; else if c == 'B' then show b; else [c]) line
-
-
 
 isImpl :: Expr -> Bool
 isImpl (Binary Impl a b) = True
@@ -92,8 +89,10 @@ annotateAll :: [Expr] -> [String]
 annotateAll exprs = map annotateExpr exprs
 
 annotateExpr :: Expr -> String
+annonateExpr expr =
 
 
+findAxioms :: [Statement] -> --TODO
 
 
 annotate :: String -> String -> IO ()
@@ -105,21 +104,30 @@ annotate inputFile outputFile = do
   --------file            <- getContents
   linesOfOldProof <- return $ lines file
 
-  -- :t firstLine :: String -> String
+  -- :t firstLine :: String -> [String]
   firstLine       <- return $ Splitter.splitOn ("|-") $ head linesOfOldProof
   newFirstLine    <- return $ show (getExpr (head firstLine)) ++ " |- " ++ show (getExpr (last firstLine)) ++ "\n"
-  firstLine       <- return $ if head firstLine == [] then [""] else firstLine
+  toProof         <- return $ last firstLine
+  firstLine       <- return $ if head firstLine == [] then [""] else $ head firstLine
 
+  -- :t firstLine :: String
   -- I know the reflections from Exprs to their numbers3
-  hypos           <- return $ Splitter.splitOn "," $ head firstLine
+  hypos           <- return $ Splitter.splitOn "," firstLine
   hypos           <- return $ if hypos == [""] then [] else map getExpr hypos
   hypos           <- return $ Map.fromList $ zip hypos [1..]
+  -- now we have hypos like ((a, 1), (b, 2), ...)
+  -- newFirstLine is ready for output
+  -- firstLine unused???
 
   -- :t linesOfOldProof :: [Expr]
   linesOfOldProof <- return $ drop 1 linesOfOldProof
   linesOfOldProof <- return $ map getExpr linesOfOldProof
 
+  linesOfOldProof <- return $ linesToStatements linesOfOldProof
+
   --let partPrintForAll = printForAll setHypos linesOfOldProof
+  linesOfOldProof <- return $ findAxioms linesOfOldProof
+
 
   appendFile outputFile (newFirstLine)
   --appendFile outputFile (Data.List.intercalate "\n" (map partPrintForAll linesOfOldProof))
