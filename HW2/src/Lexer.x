@@ -5,7 +5,7 @@ module Lexer where
 %wrapper "basic"
 
 $digit     = 0-9
-$alpha     = [A-Z]
+$alpha     = [A-Za-z]
 $apostrophe = '
 
 tokens :-
