@@ -42,13 +42,6 @@ isAxiom (Binary Impl (Not (Not a)) a')
   | a == a' = Just 10
 isAxiom _ = Nothing
 
-toStatement :: (Int, Expr) -> Statement
-toStatement (i, exprFromSource) =
-  Statement {expr = exprFromSource, numberOfAxiom = Nothing, numberOfHypos = Nothing, leftMpExpr = Nothing}
-
-linesToStatements :: [Expr] -> [Statement]
-linesToStatements exprs = map toStatement (zip [1 ..] exprs)
-
 splitImplToPair :: Expr -> Maybe (Expr, Expr)
 splitImplToPair (Binary Impl a b) = Just (a, b)
 splitImplToPair _                 = Nothing
@@ -63,16 +56,16 @@ isImpl :: Expr -> Bool
 isImpl (Binary Impl a b) = True
 isImpl _                 = False
 
-getExprFromStatement :: Statement -> Expr
-getExprFromStatement statement = expr statement
-
-getMP :: [Statement] -> Expr -> Maybe (Expr, Expr)
-getMP list expr = do
-  sublist <- return $ map getExprFromStatement list
-  result <- return $ dropWhile (wasn'tInProofAbove sublist) ((filter (isRightPart expr) (filter isImpl sublist)))
-  if (length result) == 0
-    then Nothing
-    else splitImplToPair $ head $ result
+getMP :: [Statement] -> Expr -> Set.Set Expr -> Maybe (Expr, Expr)
+getMP list exprs alreadyExists = do
+   let result = ((find $! (\x -> Set.member (case (splitImplToPair (expr x)) of
+                                          Just i -> fst i
+                                          Nothing -> (expr x))
+                                          alreadyExists)) $! sublist) where
+                                                                   sublist = ((filter $! (\x -> isRightPart exprs (expr x))) $! (filter (\x -> isImpl (expr x)) list))
+   case result of
+     Nothing -> Nothing
+     Just i -> splitImplToPair $ expr i
 
 isRightPart :: Expr -> Expr -> Bool
 isRightPart template expr =
@@ -80,50 +73,32 @@ isRightPart template expr =
     Just (a, b) -> b == template
     Nothing     -> False
 
-wasn'tInProofAbove :: [Expr] -> Expr -> Bool
-wasn'tInProofAbove proof expr =
-  case splitImplToPair expr of
-    Just (a, b) ->
-      case find (== a) proof of
-        Just a  -> False
-        Nothing -> True
-    Nothing -> True
+goUp :: [Statement] -> Set.Set Expr -> Map.Map Expr Int -> IO (([Statement], Set.Set Expr))
+goUp result alreadyExists hypos = do
+  end <- isEOF
+  if end
+    then
+      return (result, alreadyExists)
+    else do
+      line <- getLine
+      let exprs = getExpr line
+      if Set.member exprs alreadyExists
+        then
+          (goUp result alreadyExists hypos)
+        else
+          ((((goUp $!
+            (result ++ [Statement{numberOfAxiom = isAxiom exprs, expr = exprs, numberOfHypos = (Map.lookup exprs hypos), leftMpExpr =
+                                                                                                                          case (getMP result exprs alreadyExists) of
+                                                                                                                            Just (a, b) -> Just a
+                                                                                                                            Nothing -> Nothing }])) $!
+            (Set.insert exprs alreadyExists)) $!
+            hypos))
 
-getHypoNumber :: Statement -> Map.Map Expr Int -> Maybe Int
-getHypoNumber statement map = Map.lookup (expr statement) map
-
-addElement :: [Statement] -> [Statement] -> Map.Map Expr Int -> [Statement]
-addElement lines result hypos = do
-  firstElem <- return $ head lines
-  firstElem <-
-    return $
-    firstElem
-      { numberOfAxiom = (isAxiom (expr firstElem))
-      , numberOfHypos = (getHypoNumber firstElem hypos)
-      , leftMpExpr =
-          case (getMP result (expr firstElem)) of
-            Just (a, b) -> Just a
-            Nothing     -> Nothing
-      }
-  result <- return $ result ++ [firstElem]
-  result
-
-goUp :: [Statement] -> [Statement] -> Set.Set Expr -> Map.Map Expr Int -> ([Statement], Set.Set Expr)
-goUp linesOfProof result alreadyExists hypos =
-  if length linesOfProof == 1
-    then if Set.member (expr (head linesOfProof)) alreadyExists
-           then (result, alreadyExists)
-           else ((addElement linesOfProof result hypos), (Set.insert (expr (head linesOfProof)) alreadyExists))
-    else if Set.member (expr (head linesOfProof)) alreadyExists
-           then goUp (tail linesOfProof) result alreadyExists hypos
-           else goUp
-                  (tail linesOfProof)
-                  (addElement linesOfProof result hypos)
-                  (Set.insert (expr (head linesOfProof)) alreadyExists)
-                  hypos
 
 addElemsToSet :: Expr -> Expr -> Set.Set Expr -> Set.Set Expr
-addElemsToSet first second set = Set.insert second (Set.insert first set)
+addElemsToSet first second set = (Set.insert second $!) (Set.insert first set)
+
+
 
 goDown :: [Statement] -> Set.Set Expr -> [Char] -> (Set.Set Expr, [Char])
 goDown lines used info = do
@@ -141,97 +116,101 @@ goDown lines used info = do
                      Nothing -> "fail")
     else if Set.member (expr elem) used
            then case (numberOfAxiom elem) of
-                  Just i -> goDown (init lines) used info
+                  Just i -> (goDown $! (init lines)) used info
                   Nothing ->
                     case (numberOfHypos elem) of
-                      Just i -> goDown (init lines) used info
+                      Just i -> (goDown $! (init lines)) used info
                       Nothing ->
                         case (leftMpExpr elem) of
-                          Just left ->
-                            goDown (init lines) (addElemsToSet (Binary Impl (left) (expr elem)) left used) info
-                          Nothing -> goDown (init lines) used "fail"
-           else goDown (init lines) used info
+                          Just left -> do
+                              used <- return $! Set.insert left $! (Set.insert((Binary Impl (left) (expr elem))) used)
+                              (goDown $! (init lines)) used info
+                          Nothing -> (goDown $! (init lines)) used "fail"
+           else (goDown $! (init lines)) used info
 
+isOk :: Expr -> Statement -> Bool
+isOk exprs statement = exprs == (expr statement)
 
-printAll :: Map.Map Expr Int -> [(Statement, Int)] -> IO ()
+printAll :: [Statement] -> Statement -> IO ()
 --printAll statement mpMap line  = ""
 printAll mpMap statement = do
-  if length statement > 0
-    then do
-      realStatement <- return $ fst (head statement)
-      case (numberOfAxiom realStatement) of
+  case (numberOfAxiom statement) of
+    Just a ->
+      putStr
+        ("[" ++
+         (show ((case (findIndex ((isOk) (expr statement)) mpMap) of
+                  Just i -> i
+                  Nothing -> -1) + 1)) ++ ". Ax. sch. " ++ show (a) ++ "] " ++ (show (expr statement)) ++ "\n")
+    Nothing ->
+      case (numberOfHypos statement) of
         Just a ->
           putStr
             ("[" ++
-             (show (snd (head statement))) ++ ". Ax. sch. " ++ show (a) ++ "] " ++ (show (expr realStatement)) ++ "\n")
+             (show ((case (findIndex ((isOk) (expr statement)) mpMap) of
+                                      Just i -> i
+                                      Nothing -> -1) + 1)) ++
+             ". Hypothesis " ++ (show (a)) ++ "] " ++ (show (expr statement)) ++ "\n")
         Nothing ->
-          case (numberOfHypos realStatement) of
+          case (leftMpExpr statement) of
             Just a ->
               putStr
                 ("[" ++
-                 (show (snd (head statement))) ++
-                 ". Hypothesis " ++ (show (a)) ++ "] " ++ (show (expr realStatement)) ++ "\n")
-            Nothing ->
-              case (leftMpExpr realStatement) of
-                Just a ->
-                  putStr
-                    ("[" ++
-                     (show (snd (head statement))) ++
-                     ". M.P. " ++
-                     (show
-                        (case (Map.lookup (Binary Impl (a) (expr realStatement)) mpMap) of
-                           Just b  -> b
-                           Nothing -> (-1))) ++
-                     ", " ++
-                     (show
-                        (case (Map.lookup a mpMap) of
-                           Just b  -> b
-                           Nothing -> (-1))) ++
-                     "] " ++ (show (expr realStatement)) ++ "\n")
-                Nothing -> error ("ERROR IN PRINT FUNCTION " ++ (show (expr realStatement)))
-      printAll mpMap (tail statement)
-    else putStr ""
+                 (show ((case (findIndex ((isOk) (expr statement)) mpMap) of
+                                          Just i -> i
+                                          Nothing -> -1) + 1)) ++
+                 ". M.P. " ++
+                 (show
+                    ((case (findIndex ((isOk) (Binary Impl (a) (expr statement))) mpMap) of
+                       Just b  -> b
+                       Nothing -> (-1)) + 1)) ++
+                 ", " ++
+                 (show
+                    ((case (findIndex ((isOk) a) mpMap) of
+                       Just b  -> b
+                       Nothing -> (-1)) + 1)) ++
+                 "] " ++ (show (expr statement)) ++ "\n")
+            Nothing -> error ("ERROR IN PRINT FUNCTION " ++ (show (expr statement)))
 
-containsIn :: Set.Set Expr -> Statement -> Bool
-containsIn set statement = Set.member (expr statement) set
+
 
 annotate :: String -> String -> IO ()
 annotate inputFile outputFile
 --   writeFile outputFile ""
 --   file <- readFile inputFile
  = do
-  file <- getContents
-  linesOfOldProof <- return $ lines file
-  firstLine <- return $ Splitter.splitOn ("|-") $ head linesOfOldProof
-  newFirstLine <- return $ head firstLine ++ " |- " ++ show (getExpr (last firstLine))
-  toProof <- return $ getExpr (last firstLine)
+--  file <- getContents
+--  let linesOfOldProof = lines file
+  firstLine <- getLine
+  firstLine <- return $! Splitter.splitOn ("|-") $ firstLine
+  newFirstLine <- return $! head firstLine ++ " |- " ++ show (getExpr (last firstLine))
+  toProof <- return $! getExpr (last firstLine)
   firstLine <-
-    return $
+    return $!
     if head firstLine == []
       then ""
       else (head firstLine)
-  hypos <- return $ Splitter.splitOn "," firstLine
-  hypos <-
-    return $
+
+  hypos <- return $! Splitter.splitOn "," firstLine
+  hypos <- return $!
     if hypos == [""]
       then []
       else map getExpr hypos
-  hypos <- return $ Map.fromList $ zip hypos [1 ..]
-  linesOfOldProof <- return $ drop 1 linesOfOldProof
-  linesOfOldProof <- return $ map getExpr linesOfOldProof
-  if (last linesOfOldProof) /= toProof
+  hypos <- return $! Map.fromList $ zip hypos [1 ..]
+
+  (exprs, alreadyExists) <-  (goUp [] Set.empty hypos)
+
+  if (expr (last exprs)) /= toProof
     then putStr "Proof is incorrect"
     else do
-      linesOfOldProof <- return $ linesToStatements linesOfOldProof
-      linesOfOldProof <- return $ fst $ goUp linesOfOldProof [] Set.empty hypos
-      used <- return $ goDown linesOfOldProof (Set.fromList [expr (last linesOfOldProof)]) ""
+      used <- return $! (goDown exprs $! (Set.fromList [expr (last exprs)])) ""
       if (snd used == "fail")
         then putStr "Proof is incorrect"
         else do
 --           writeFile outputFile ""
 --           appendFile outputFile (newFirstLine)
 --         appendFile outputFile (printAll (zip ((filter (containsIn (used))) linesOfOldProof) [1..]) (Map.fromList(zip (map getExprFromStatement ((filter (containsIn (used))) linesOfOldProof)) [1..])) "")
-          putStr (newFirstLine ++ "\n")
-          (printAll
-             (Map.fromList (zip (map getExprFromStatement ((filter (containsIn (fst used))) linesOfOldProof)) [1 ..])))
-            (zip ((filter (containsIn (fst used))) linesOfOldProof) [1 ..])
+--          putStr (newFirstLine ++ "\n")
+          used <- return $! (filter $! (\x -> Set.member (expr x) (fst used))) exprs
+          let result = map (\x -> printAll used x) used
+          let result' = foldl (>>) (return ()) result
+          (putStrLn newFirstLine) >> result'
