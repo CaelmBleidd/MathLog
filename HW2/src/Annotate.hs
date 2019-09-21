@@ -32,9 +32,9 @@ isAxiom (Binary Impl (Binary Impl a b) (Binary Impl (Binary Impl a' (Binary Impl
 isAxiom (Binary Impl a (Binary Impl b (Binary And a' b')))
   | a == a' && b' == b = Just 3
 isAxiom (Binary Impl (Binary And a b) b')
-  | b == b' = Just 4
+  | b == b' = Just 5
 isAxiom (Binary Impl (Binary And a b) a')
-  | a == a' = Just 5
+  | a == a' = Just 4
 isAxiom (Binary Impl a (Binary Or a' b))
   | a == a' = Just 6
 isAxiom (Binary Impl b (Binary Or a' b'))
@@ -125,7 +125,7 @@ goUp exprs exprToPosition rightPartsToPositions hypos number numberToStatement l
                                                  otherwise         -> rightPartsToPositions
                   let exprs' = Map.insert number expression exprs
                   let numberToStatement' = Map.insert (number - 1 ) statement numberToStatement
-                  goUp exprs' exprToPosition' rightPartsToPositions' hypos (number + 1) numberToStatement' expression
+                  (goUp exprs' exprToPosition' $! rightPartsToPositions') hypos (number + 1) numberToStatement' expression
 
 goDown :: Int -> Map.Map Int Statement -> Set.Set Int  -> Set.Set Int
 goDown number statements used = do
